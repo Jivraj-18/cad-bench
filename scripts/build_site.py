@@ -46,10 +46,11 @@ def build(experiment,base):
                 document['candidate']=base+'/'+document['candidate']
                 document['alignment']=base+'/'+document['alignment']
                 for revision in document['revisions']: revision['url']=base+'/'+revision['url']
-            if source.name=='comparison.json':
+            if source.name=='comparison.json' and 'models' in document:
                 for model in document['models']:
                     model['url']=base+'/'+model['url']
                     if model.get('alignment'):model['alignment']=base+'/'+model['alignment']
+                    if model.get('comparison'):model['comparison']=base+'/'+model['comparison']
                     for revision in model.get('revisions',[]):revision['url']=base+'/'+revision['url']
             target.write_text(json.dumps(document,separators=(',',':'))+'\n')
         else: shutil.copyfile(source,target)

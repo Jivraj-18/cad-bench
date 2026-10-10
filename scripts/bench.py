@@ -415,6 +415,7 @@ def collect(args):
             launched=(ROOT/'jobs'/job_name).exists()
             rows.append({'task': planned['task']['name'], 'cell': planned['cell']['id'],
                          'model': planned['cell']['model'], 'agent': planned['cell']['agent'],
+                         'reasoning_effort':planned['cell'].get('reasoning_effort','Unknown'),
                          'status': 'incomplete' if launched else 'not_run', 'reward': None, 'job_name': job_name})
         for path in trial_files:
             r = read(path)
@@ -428,10 +429,17 @@ def collect(args):
             details = read(detail_path) if detail_path.exists() else {}
             context = r.get('agent_result') or {}
             info = r.get('agent_info') or {}
+            effort=(r.get('config',{}).get('agent',{}).get('kwargs',{}).get('reasoning_effort') or planned['cell'].get('reasoning_effort','Unknown'))
+            log=path.parent/'trial.log'
+            launch=log.read_text(errors='replace') if log.exists() else ''
+            effort_option=('--effort '+effort if planned['cell']['agent']=='claude-code' else 'model_reasoning_effort='+effort)
+            effort_confirmed=effort_option in launch
             candidate = next(iter(sorted((path.parent/'artifacts').rglob('answer.FCStd'))), None)
             artifact = {'path': str(candidate.relative_to(ROOT)), 'sha256': sha(candidate)} if candidate else None
             rows.append({'task': planned['task']['name'], 'cell': planned['cell']['id'],
                          'model': planned['cell']['model'], 'agent': planned['cell']['agent'],
+                         'reasoning_effort':effort,'effort_launch_confirmed':effort_confirmed,
+                         'effort_evidence':{'source':'native launch log','option':effort_option} if effort_confirmed else None,
                          'observed_model': (info.get('model_info') or {}).get('name'),
                          'observed_agent_version': info.get('version'),
                          'status': ('perfect' if effective >= 1.0-1e-6 else 'partial') if scored else 'error',
@@ -448,7 +456,7 @@ def collect(args):
     write(ROOT/'reports'/args.experiment/'results.json',
           {'experiment': args.experiment, 'dataset_digest': read(CONFIG)['dataset_digest'],
            'cohort_sha256': sha(MANIFEST), 'rows': rows})
-    fields = ['task','cell','model','agent','status','reward','geometry','spec','cost_usd','exception_type','job_name']
+    fields = ['task','cell','model','agent','reasoning_effort','status','reward','geometry','spec','cost_usd','exception_type','job_name']
     out = ROOT/'reports'/args.experiment/'results.csv'
     with out.open('w', newline='') as f:
         writer = csv.DictWriter(f, fields, extrasaction='ignore')

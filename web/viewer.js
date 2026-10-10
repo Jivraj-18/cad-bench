@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {OrbitControls} from './lib/OrbitControls.js';
 
 const json = async url => {
-  const response = await fetch(url);
+  const response = await fetch(url,{cache:'no-cache'});
   if (!response.ok) throw new Error(`Could not load CAD data (${response.status})`);
   return response.json();
 };
@@ -45,11 +45,29 @@ function inverseAlignment(a) {
     translation:[0,1,2].map(j=>-(t[0]*r[j][0]+t[1]*r[j][1]+t[2]*r[j][2]))};
 }
 
+function differences(data,reference){
+  const result=scene(reference);
+  for(const object of result.children){
+    if(object.isMesh){object.material.transparent=true;object.material.opacity=.12;object.material.depthWrite=false;}
+    if(object.isLineSegments)object.material.opacity=.12;
+  }
+  for(const [kind,color] of [['missing','#cf3838'],['extra','#e6a020']]){
+    const region=data.overlap.regions[kind];if(!region.vertices.length)continue;
+    result.add(new THREE.Mesh(geometry(region),new THREE.MeshStandardMaterial({
+      color,side:THREE.DoubleSide,flatShading:true,roughness:.8,
+    })));
+  }
+  return result;
+}
+
 async function horizontal(host,config) {
-  const models=await Promise.all(config.models.map(async item=>({
-    ...item, data:await json(item.url),
-    transform:item.alignment ? inverseAlignment(await json(item.alignment)) : null,
-  })));
+  const models=await Promise.all(config.models.map(async item=>{
+    const diagnostic=item.comparison?await json(item.comparison):null;
+    return {...item,data:await json(item.url),diagnostic,
+      transform:diagnostic?diagnostic.overlap.candidate_to_reference:
+        item.alignment?inverseAlignment(await json(item.alignment)):null};
+  }));
+  const groundTruth=models.find(m=>m.reference).data;
   const scenes=models.map(item=>scene(item.data,item.transform));
   const box=new THREE.Box3(); scenes.forEach(s=>box.union(new THREE.Box3().setFromObject(s)));
   const center=box.getCenter(new THREE.Vector3()), size=box.getSize(new THREE.Vector3());
@@ -60,13 +78,14 @@ async function horizontal(host,config) {
     const title=document.createElement('h4');title.textContent=item.label;panel.append(title);
     if(item.stats){
       const stats=document.createElement('p');stats.className='pane-stats';
-      stats.textContent=`Score ${item.stats.score} · ${item.stats.elapsed} · ${item.stats.cost}`;panel.append(stats);
+      stats.textContent=`Effort: ${item.stats.effort} · Score ${item.stats.score} · ${item.stats.elapsed} · ${item.stats.cost}`;panel.append(stats);
     }else{
       const stats=document.createElement('p');stats.className='pane-stats';stats.textContent='Ground-truth CAD from the dataset';panel.append(stats);
     }
     const toolbar=document.createElement('div');toolbar.className='pane-toolbar';
     const select=document.createElement('select');select.setAttribute('aria-label',item.shortLabel+' CAD revision');
     const options=[{name:item.reference?'Ground truth':'Final CAD',data:item.data},
+      ...(item.diagnostic?[{name:'Missing / extra material',difference:true}]:[]),
       ...(item.revisions||[]).map((r,n)=>({name:`Saved revision ${n+1}`,url:r.url})),
       ...(item.data.stages||[]).filter(s=>s.vertices?.length&&s.triangles?.length)
         .map(s=>({name:'Feature: '+(s.label||s.name),data:s}))];
@@ -92,8 +111,10 @@ async function horizontal(host,config) {
     }
     select.addEventListener('change',async()=>{
       try {
-        const choice=options[Number(select.value)];if(!choice.data)choice.data=await json(choice.url);
-        scenes[i]=scene(choice.data,item.transform);draw();
+        const choice=options[Number(select.value)];
+        if(choice.difference)scenes[i]=differences(item.diagnostic,groundTruth);
+        else{if(!choice.data)choice.data=await json(choice.url);scenes[i]=scene(choice.data,item.transform);}
+        draw();
       }catch(error){host.querySelector('.viewer-status').textContent=error.message;host.querySelector('.viewer-status').hidden=false;}
     });
     controls.addEventListener('change',draw);new ResizeObserver(draw).observe(canvas);

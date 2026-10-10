@@ -6,6 +6,7 @@ import html
 import json
 import shutil
 import subprocess
+import hashlib
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -130,11 +131,12 @@ def process_evidence(row,report,task):
 
 
 def page(title,body):
+    viewer_version=hashlib.sha256((ROOT/'web/viewer.js').read_bytes()).hexdigest()[:12]
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%231b3155'/%3E%3Cpath d='M12 44V20h40v24H12m10-8h20V28H22z' stroke='white' fill='none' stroke-width='4'/%3E%3C/svg%3E">
 <script type="importmap">{{"imports":{{"three":"./lib/three.module.js"}}}}</script>
-<script type="module" src="./viewer.js"></script>
+<script type="module" src="./viewer.js?v={viewer_version}"></script>
 <style>
 :root{{--paper:#f5f2ea;--ink:#172033;--blue:#255da5;--muted:#697487}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font:18px/1.65 system-ui,sans-serif}}
@@ -214,7 +216,8 @@ def horizontal_comparison(rows,report,task):
         asset=report/'assets'/task/row['cell'];base=f'assets/{task}/{row["cell"]}'
         if not all((asset/name).exists() for name in ('candidate.mesh.json','reference.mesh.json','alignment.json')):continue
         item={'label':label,'shortLabel':short,'url':base+'/candidate.mesh.json','alignment':base+'/alignment.json','revisions':[]}
-        item['stats']={'score':score(row.get('reward')),'elapsed':elapsed(row),'cost':cost_label(row)}
+        item['stats']={'score':score(row.get('reward')),'elapsed':elapsed(row),'cost':cost_label(row),'effort':row.get('reasoning_effort','Unknown')}
+        if (asset/'comparison.json').exists():item['comparison']=base+'/comparison.json'
         if (asset/'revisions.json').exists():
             for revision in load(asset/'revisions.json'):
                 item['revisions'].append({'url':base+'/'+revision['snapshot']+'.mesh.json','observed_at':revision['observed_at']})
@@ -231,11 +234,64 @@ def horizontal_comparison(rows,report,task):
 <p class="muted">Drag within a panel to rotate it; scroll or pinch to zoom. Initial alignment is rigid, with no scaling. Reference alignment is for display; official scores come from the independent grader.</p>'''
 
 
+def deterministic_details(rows,report,task):
+    ordered=[]
+    for prefix,label in [('claude-code-opus','Claude'),('codex-sol-6-1','Codex')]:
+        row=next((r for r in rows if r['cell'].startswith(prefix)),None)
+        if row:
+            p=report/'assets'/task/row['cell']/'comparison.json'
+            if p.exists():ordered.append((label,row,load(p)))
+    if len(ordered)!=2:return ''
+    ref=ordered[0][2]['reference']
+    body='<h2>Numbers behind the picture</h2><p>The official score remains unchanged. Material overlap below is an additional deterministic geometric diagnostic. In the viewer, select <strong>Missing / extra material</strong>: <strong style="color:#cf3838">red</strong> is reference material missing from the candidate; <strong style="color:#b27710">gold</strong> is extra candidate material.</p>'
+    body+='<div class="scroll"><table><tr><th>Measure</th><th>Reference</th><th>Claude</th><th>Codex</th></tr>'
+    for label,key in [('Volume (mm³)','volume_mm3'),('Surface area (mm²)','surface_area_mm2'),('Faces','faces'),('Edges','edges'),('Vertices','vertices')]:
+        values=[ref['metrics'][key]]+[d['candidate']['metrics'][key] for _,r,d in ordered]
+        body+='<tr><th>'+label+'</th>'+''.join('<td>'+esc(f'{v:,.3f}' if isinstance(v,float) else v)+'</td>' for v in values)+'</tr>'
+    official=[d['official_recomputed']['geometry_details'] for label,r,d in ordered]
+    box=official[0]['geom_details']['bbox_reference']
+    body+='<tr><th>Oriented box extents (mm)</th><td>'+esc(' × '.join(f'{v:.3f}' for v in box))+'</td>'
+    for detail in official:body+='<td>'+esc(' × '.join(f'{v:.3f}' for v in detail['geom_details']['bbox_candidate']))+'</td>'
+    body+='</tr>'
+    for label,key in [('Oriented-box difference (%)','bbox_rel_diff'),('Volume difference (%)','volume_rel_diff'),('Surface-type difference (%)','surface_types_rel_diff'),('Principal-moment difference (%)','principal_moments_rel_diff')]:
+        body+='<tr><th>'+label+'</th><td>0</td>'+''.join('<td>'+f'{detail["geom_details"][key]*100:.5f}'+'</td>' for detail in official)+'</tr>'
+    body+='<tr><th>Face-center ICP RMSE (mm)</th><td>0</td>'+''.join('<td>'+f'{detail["icp_details"]["rmse"]:.6f}'+'</td>' for detail in official)+'</tr>'
+    for label,key,reference in [('Volume overlap (IoU)','volume_iou','100%'),('Missing material (mm³)','missing_material_mm3','0'),('Extra material (mm³)','extra_material_mm3','0')]:
+        values=[d['overlap'][key] for _,r,d in ordered]
+        body+='<tr><th>'+label+'</th><td>'+reference+'</td>'+''.join('<td>'+esc(f'{v*100:.5f}%' if key=='volume_iou' else f'{v:,.3f}')+'</td>' for v in values)+'</tr>'
+    body+='</table></div><p class="muted">Overlap chooses the best exact solid intersection among a finite set of proper right-angle rotations, with bounding-box-center translation. It applies no scaling or reflection. It is suitable for these axis-oriented files; it is not a general optimal registration solver. The grader’s face-center ICP depends on face partitioning and is not a surface-distance measurement.</p>'
+    body+='<h2>How each CAD file was constructed</h2><p>These are the operations saved in the document’s feature tree. They describe construction, not the chronological editing process; actual saved revisions remain available separately.</p><div class="viewer-panels">'
+    for label,data in [('Reference',ref)]+[(label,d['candidate']) for label,r,d in ordered]:
+        body+=f'<div class="viewer-pane"><h3>{label}</h3><p>{data["operation_count"]} operations · {data["sketch_count"]} sketches</p><ol>'
+        for operation in data['history']:
+            profile=operation['profile'] or {};params=operation['parameters']
+            description=operation['type'].replace('PartDesign::','')
+            if 'Length' in params:description+=' · '+str(params['Length'])+' mm'
+            body+=f'<li><strong>{esc(operation["label"])}</strong><br>{esc(description)}<br><span class="muted">Material change: {operation["delta_volume_mm3"]:+,.3f} mm³</span>'
+            if profile.get('radii_mm'):body+='<br>Profile radii: '+esc(', '.join(str(v) for v in profile['radii_mm']))+' mm'
+            body+='</li>'
+        body+='</ol></div>'
+    body+='</div><h2>Which dimension checks failed?</h2>'
+    for label,row,data in ordered:
+        findings=data['official_recomputed']['dimension_findings']
+        body+=f'<h3>{label}</h3>'
+        failed=[('Inconsistent',v) for v in findings['inconsistent']]+[('Not found',v) for v in findings['not_found']]
+        if not failed:body+=f'<p>All {len(findings["consistent"])} specification checks found consistent measurements.</p>'
+        else:
+            body+='<div class="scroll"><table><tr><th>Parameter</th><th>Expected</th><th>Measured</th><th>Status / reason</th></tr>'
+            for status,f in failed:
+                body+=f'<tr><td>{esc(f["param"])}</td><td>{esc(f["spec_value"])} {esc(f["unit"])}</td><td>{esc(f.get("measured_value"))}</td><td>{status}: {esc(f.get("reason",""))}</td></tr>'
+            body+='</table></div>'
+        base=f'assets/{task}/{row["cell"]}'
+        body+=f'<p><a href="{base}/comparison.json">Full deterministic measurements, constraints and dimension witnesses</a> · <a href="{base}/comparison-provenance.json">Input hashes and repeatability proof</a></p>'
+    return body
+
+
 def table(rows):
-    result='<div class="scroll"><table><thead><tr><th>Model / setup</th><th>Status</th><th>Geometry</th><th>Spec</th><th>Overall</th><th>Reported cost</th><th>Elapsed time</th></tr></thead><tbody>'
+    result='<div class="scroll"><table><thead><tr><th>Model / setup</th><th>Effort</th><th>Status</th><th>Geometry</th><th>Spec</th><th>Overall</th><th>Reported cost</th><th>Elapsed time</th></tr></thead><tbody>'
     for r in rows:
         cost='Unknown' if r.get('cost_usd') is None else '$'+f"{r['cost_usd']:.2f}"
-        result+=f"<tr><td>{esc(r['cell'])}</td><td class=\"status-{esc(r['status'])}\">{esc(r['status'].replace('_',' '))}</td><td>{score(r.get('geometry'))}</td><td>{score(r.get('spec'))}</td><td>{score(r.get('reward'))}</td><td>{cost}</td><td>{esc(elapsed(r))}</td></tr>"
+        result+=f"<tr><td>{esc(r['cell'])}</td><td>{esc(r.get('reasoning_effort','Unknown'))}</td><td class=\"status-{esc(r['status'])}\">{esc(r['status'].replace('_',' '))}</td><td>{score(r.get('geometry'))}</td><td>{score(r.get('spec'))}</td><td>{score(r.get('reward'))}</td><td>{cost}</td><td>{esc(elapsed(r))}</td></tr>"
     return result+'</tbody></table></div>'
 
 
@@ -265,6 +321,7 @@ def generate(experiment):
         shared=horizontal_comparison(rows,report,task)
         body+=f'<img class="drawing" src="assets/{task}/drawing.png" alt="Original dimensioned engineering drawing">'+shared+'<h2>The results</h2>'+table(rows)
         body+=f'<p><a href="assets/{task}/reference.FCStd">Download the dataset’s ground-truth CAD</a></p>'
+        body+=deterministic_details(rows,report,task)
         complete=[r for r in rows if r.get('reward') is not None]
         perfect=[r['cell'] for r in complete if r['status']=='perfect']
         if perfect:

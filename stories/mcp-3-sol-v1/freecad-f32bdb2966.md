@@ -10,4 +10,4 @@ The specification checker accepted **30 of 30 checks**, but geometry scored **0.
 
 [Reference opening measurements](evidence/freecad-f32bdb2966/codex-sol-6-1--freecad-mcp/reference-opening-inspection.json) support this diagnosis. The CAD comparison below shows the result; the diagnostic details preserve the official scoring evidence.
 
-Opus reconstructed the same bracket with an overall score of **0.999873** and geometry score of **0.999746**. All **30 specification checks** passed, and the official surface-matching RMSE was **0.000210 mm**. It is the closest reconstruction in this pilot, while Sol’s extra step at the rear opening remains a geometric mismatch.
+Opus reconstructed the same bracket with an overall score of **0.999873** and geometry score of **0.999746**. All **30 specification checks** passed, and the official face-center ICP RMSE was **0.000210 mm**. It is the closest reconstruction in this pilot, while Sol’s extra step at the rear opening remains a geometric mismatch.

@@ -259,3 +259,22 @@ After the runs finish, regenerate evidence and stories with:
 ```
 
 Editable interpretation lives in `stories/mcp-3-sol-v1/*.md`. Changes there survive regeneration. Trial logs, timelines, intermediate snapshots, final candidates, and verifier diagnostics remain separately available for audit.
+
+## Deterministic CAD comparisons
+
+```sh
+.venv/bin/python scripts/compare.py --experiment mcp-3-sol-v1 --verify-repeat
+.venv/bin/python scripts/bench.py collect --experiment mcp-3-sol-v1 --enhancement freecad-mcp
+.venv/bin/python scripts/story.py --experiment mcp-3-sol-v1
+.venv/bin/python scripts/build_site.py --r2-base "$R2_BASE_URL"
+```
+
+`compare.py` mounts the frozen candidate, official reference, and per-case dimension checker read-only in an offline FreeCAD 1.1.0 image. `compare_cad_runtime.py` exports volume/area/topology/mass properties; feature order, profiles, parameters, constraints, and volume changes; full official dimension witnesses; and exact intersection/missing/extra material. Native agent scripts are never executed. Stored official scores remain unchanged.
+
+Material IoU uses a finite search over proper right-angle rotations and bounding-box-center translations, selecting maximum exact intersection volume. It never scales or reflects models. This is an explicitly limited registration method for the current orthographic, axis-oriented files, not a globally optimal solver for arbitrary rotations. OCC kernel tolerances apply. Boolean-error cases fail explicitly rather than quietly reporting a score.
+
+Outputs are canonically sorted, floats rounded to nine decimal places, and threads/hash seed fixed. `--verify-repeat` runs two fresh containers per candidate and requires byte-identical comparison JSON. All six current comparisons passed that check. Provenance records the resolved Docker image ID, runtime-script hash, input CAD hashes, and output hash. Determinism is established for the recorded runtime and inputs; cross-version/cross-platform byte identity is not claimed.
+
+The official validator’s ICP is itself deterministic, but compares face centers, which depend on feature-driven face partitioning. Thus high solid overlap can coexist with a lower official score. The site shows both measures and lets you inspect missing/extra material and construction history. Feature-tree construction order is distinct from the author’s editing chronology; actual sampled revisions are retained separately.
+
+**Effort:** all six trials used `high`. Frozen configurations and native launch logs confirm `--effort high` for Claude Code and `model_reasoning_effort=high` for Codex. JSON/CSV results and the per-panel summaries record it. Equal effort labels across providers do not imply an equal token budget.
