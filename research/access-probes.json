@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-08",
+  "probes": [
+    {"model": "gpt-6-astra", "agent": "codex", "version": "0.161.0", "auth": "subscription", "result": "OK"},
+    {"model": "claude-opus-5-5", "agent": "claude-code", "version": "2.1.289", "auth": "subscription", "result": "OK", "token_cost_estimate_usd": 0.045568},
+    {"model": "claude-fable-5-1", "agent": "claude-code", "version": "2.1.289", "auth": "subscription", "result": "blocked", "api_error_status": 429, "api_error_code": "credits_required", "api_error": "model_requires_usage_credits"},
+    {"model": "claude-fable-5", "agent": "claude-code", "version": "2.1.289", "auth": "subscription", "result": "blocked", "api_error_status": 429, "api_error_code": "credits_required", "api_error": "model_requires_usage_credits"}
+  ],
+  "note": "Access probes are not CAD trials. No credentials or session IDs are recorded here."
+}

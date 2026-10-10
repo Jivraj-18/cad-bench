@@ -1,0 +1,10 @@
+[Unit]
+Description=Continue the drawing-only CAD benchmark and wait for provider quota resets
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jivraj/experiments/cad-bench
+ExecStart=/home/jivraj/experiments/cad-bench/.venv/bin/python /home/jivraj/experiments/cad-bench/scripts/worker.py
+TimeoutStartSec=infinity
+StandardOutput=append:/home/jivraj/experiments/cad-bench/runs/pilot-3-v1/scheduler.log
+StandardError=append:/home/jivraj/experiments/cad-bench/runs/pilot-3-v1/scheduler.log

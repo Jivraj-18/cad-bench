@@ -1,0 +1,66 @@
+{
+  "dataset": "gnucleus-ai/cad-bench",
+  "dataset_digest": "sha256:8a786725d3648a76282fc5868df06da3d5e00d603f283573a53430803465d78a",
+  "harbor_version": "0.23.0",
+  "freecad_version": "1.1.0",
+  "cohort_seed": 20261008,
+  "pilot_count": 3,
+  "anchor_tasks": [
+    "freecad-f32bdb2966",
+    "freecad-6b54209a13"
+  ],
+  "attempts": 1,
+  "concurrency": 1,
+  "timeout_sec": 9000,
+  "retry_policy": "No automatic retries; retain all failures.",
+  "cells": [
+    {
+      "id": "claude-code-opus",
+      "agent": "claude-code",
+      "model": "anthropic/claude-opus-5-5",
+      "version": "2.1.289",
+      "reasoning_effort": "high",
+      "group": "native"
+    },
+    {
+      "id": "claude-code-fable",
+      "agent": "claude-code",
+      "model": "anthropic/claude-fable-5-1",
+      "version": "2.1.289",
+      "reasoning_effort": "high",
+      "group": "native"
+    },
+    {
+      "id": "codex-astra",
+      "agent": "codex",
+      "model": "openai/gpt-6-astra",
+      "version": "0.161.0",
+      "reasoning_effort": "high",
+      "group": "native"
+    },
+    {
+      "id": "codex-sol-6-1",
+      "agent": "codex",
+      "model": "openai/gpt-6.1-sol",
+      "version": "0.162.1",
+      "reasoning_effort": "high",
+      "group": "native"
+    }
+  ],
+  "enhancements": [
+    {
+      "id": "verification-skill",
+      "kind": "skill",
+      "path": "vendor/superpowers/verification-before-completion",
+      "source": "https://github.com/obra/superpowers",
+      "commit": "8ca22dba9a94f28898bbce59f2537ff4d87c747d"
+    },
+    {
+      "id": "freecad-mcp",
+      "kind": "tool",
+      "path": "vendor/freecad-mcp",
+      "source": "https://github.com/neka-nat/freecad-mcp",
+      "commit": "4751f953636f46b825424320c2f76e11159dd8c0"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Image-to-CAD benchmark pilot</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%231b3155'/%3E%3Cpath d='M12 44V20h40v24H12m10-8h20V28H22z' stroke='white' fill='none' stroke-width='4'/%3E%3C/svg%3E">
+<script type="importmap">{"imports":{"three":"./lib/three.module.js"}}</script>
+<script type="module" src="./viewer.js"></script>
+<style>
+:root{--paper:#f5f2ea;--ink:#172033;--blue:#255da5;--muted:#697487}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:18px/1.65 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:50px 24px}h1,h2{font-family:Georgia,serif;line-height:1.12}h1{font-size:clamp(2rem,5vw,4rem);max-width:950px}h2{font-size:2rem;margin-top:2.5rem}
+a{color:var(--blue)}.eyebrow,.muted{color:var(--muted)}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:13px}
+.drawing{width:100%;max-height:720px;object-fit:contain;background:white;border:1px solid #ccc}
+.card{padding:24px;background:white;border:1px solid #d5d0c5;margin:20px 0;border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:15px}td,th{padding:12px 8px;border-bottom:1px solid #ddd;text-align:left}.scroll{overflow-x:auto}
+.status-perfect{color:#25764f}.status-error{color:#a83d32}.status-not_run,.status-incomplete{color:var(--muted)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}.pair img,.stages img{width:100%;background:white}figure{margin:0}figcaption{font-size:14px;color:var(--muted)}
+.stages{display:flex;gap:12px;overflow-x:auto}.stages figure{min-width:180px;max-width:240px}
+.cad-viewer{position:relative;border:1px solid #d5d0c5;background:#f8f8f5;border-radius:8px;overflow:hidden}
+.cad-viewer canvas{display:block;width:100%;height:480px;touch-action:none;cursor:grab}
+.viewer-toolbar{display:flex;gap:12px;flex-wrap:wrap;padding:14px;background:white;align-items:center}
+.viewer-toolbar select,.viewer-toolbar button{padding:9px;font:inherit;max-width:100%}
+.viewer-labels{display:flex;justify-content:space-around;font-size:14px;padding-top:12px}
+.viewer-labels[hidden]{display:none}.viewer-status{padding:16px}.viewer-caption{font-size:14px;padding:0 16px}
+.viewer-panels{display:grid;grid-template-columns:repeat(3,minmax(280px,1fr));gap:12px;padding:12px}
+.horizontal-viewer{overflow-x:auto}.viewer-pane h4{margin:8px 0;text-align:center}
+.viewer-pane{min-width:0}.viewer-pane canvas{height:360px;width:100%}
+.pane-toolbar{display:flex;gap:6px}.pane-toolbar select{min-width:0;flex:1;width:100px}
+.pane-toolbar button,.pane-toolbar select{padding:7px;font:14px system-ui}
+.pane-stats{font-size:13px;line-height:1.45;min-height:3.5em;margin:8px 0}
+.wipe{position:relative;aspect-ratio:1;background:white;max-width:700px;margin:20px auto}.wipe img{position:absolute;inset:0;width:100%}.wipe .candidate{clip-path:inset(0 calc(100% - var(--cut,50%)) 0 0)}
+input[type=range]{width:100%;accent-color:var(--blue)}details{margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#ebe6da;padding:16px;font:13px/1.6 monospace}.badge{font:14px monospace}
+@media(max-width:650px){.pair{grid-template-columns:1fr}main{padding:30px 16px}}
+</style></head><body><main><p class="eyebrow">CAD Bench V3 · image-only pilot</p><h1>Read the drawing. Build the part. Check the geometry.</h1><p>3 examples · 6 completed / 6 planned trials. This pilot cannot establish a dataset-wide winner.</p><ul><li><a href="freecad-f32bdb2966.html">freecad-f32bdb2966</a></li><li><a href="freecad-6b54209a13.html">freecad-6b54209a13</a></li><li><a href="freecad-f4e56c467a.html">freecad-f4e56c467a</a></li></ul><h2>Evidence before a verdict.</h2><div class="scroll"><table><thead><tr><th>Model / setup</th><th>Status</th><th>Geometry</th><th>Spec</th><th>Overall</th><th>Reported cost</th><th>Elapsed time</th></tr></thead><tbody><tr><td>claude-code-opus--freecad-mcp</td><td class="status-partial">partial</td><td>0.999746</td><td>1.000000</td><td>0.999873</td><td>$0.68</td><td>4m 49s</td></tr><tr><td>claude-code-opus--freecad-mcp</td><td class="status-partial">partial</td><td>0.500001</td><td>0.800000</td><td>0.615385</td><td>$1.56</td><td>10m 05s</td></tr><tr><td>claude-code-opus--freecad-mcp</td><td class="status-partial">partial</td><td>0.496418</td><td>1.000000</td><td>0.663475</td><td>$0.33</td><td>3m 15s</td></tr><tr><td>codex-sol-6-1--freecad-mcp</td><td class="status-partial">partial</td><td>0.310054</td><td>1.000000</td><td>0.473345</td><td>$0.29</td><td>9m 28s</td></tr><tr><td>codex-sol-6-1--freecad-mcp</td><td class="status-partial">partial</td><td>0.218725</td><td>0.700000</td><td>0.333304</td><td>$0.48</td><td>17m 02s</td></tr><tr><td>codex-sol-6-1--freecad-mcp</td><td class="status-partial">partial</td><td>0.550815</td><td>1.000000</td><td>0.710356</td><td>$0.29</td><td>10m 54s</td></tr></tbody></table></div><p>Reported costs are API-equivalent token estimates; subscription billing is not measured. Scores are from the unchanged official grader.</p><p><a href="https://pub-ac14e3e9a8a8474fbe57e2ae57dd761c.r2.dev/cad-bench/mcp-3-sol-v1/results.csv">Download results CSV</a> · <a href="https://pub-ac14e3e9a8a8474fbe57e2ae57dd761c.r2.dev/cad-bench/mcp-3-sol-v1/results.json">Download structured results</a></p><p>Stories are generated from frozen results and editable Markdown in <code>stories/mcp-3-sol-v1</code>. Rebuilding preserves your edits. Raw native trajectories and logs remain in <code>jobs/</code>.</p></main></body></html>

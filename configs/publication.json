@@ -1,0 +1,8 @@
+{
+  "repo": "Jivraj-18/cad-bench",
+  "pages": "https://jivraj-18.github.io/cad-bench/",
+  "experiment": "mcp-3-sol-v1",
+  "r2_directory": "~/r2/cad-bench",
+  "r2_base": "https://pub-ac14e3e9a8a8474fbe57e2ae57dd761c.r2.dev/cad-bench/mcp-3-sol-v1",
+  "three_version": "0.186.1"
+}

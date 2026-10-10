@@ -1,0 +1,53 @@
+"""Render frozen CAD with FreeCAD's depth-buffered GUI, in an offline Xvfb container."""
+import json
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide import QtCore, QtWidgets
+
+config=json.load(open('/output/gui-render.json'))
+status={'renderer':'FreeCAD 1.1.0 GUI under Xvfb','status':'running'}
+try:
+    for item in config['items']:
+        doc=App.openDocument(item['path'])
+        body=next(o for o in doc.Objects if o.TypeId=='PartDesign::Body')
+        if item.get('rotation') is not None:
+            m=App.Matrix()
+            # NumPy row-vector rotation -> FreeCAD column-vector transform.
+            r=item['rotation'];t=item['translation']
+            for i in range(3):
+                for j in range(3): setattr(m,'A'+str(i+1)+str(j+1),r[j][i])
+            m.A14,m.A24,m.A34=t
+            body.Placement=App.Placement(m).multiply(body.Placement)
+        features=[o for o in body.Group if o.TypeId.startswith('PartDesign::')
+                  and hasattr(o,'Shape') and not o.Shape.isNull()]
+        original_tip=body.Tip
+        views=[(original_tip,item['output'])]
+        if item.get('stages'):
+            views += [(o,item['prefix']+'-stage-'+str(i+1)+'.png') for i,o in enumerate(features)]
+        for feature,filename in views:
+            for obj in doc.Objects:
+                if hasattr(obj,'ViewObject'): obj.ViewObject.Visibility=False
+            body.Tip=feature;doc.recompute()
+            body.ViewObject.Visibility=True;feature.ViewObject.Visibility=True
+            feature.ViewObject.ShapeColor=(0.78,0.80,0.84)
+            feature.ViewObject.LineColor=(0.20,0.23,0.27)
+            feature.ViewObject.DisplayMode='Flat Lines'
+            view=Gui.activeDocument().activeView()
+            view.viewAxonometric()
+            camera=view.getCameraOrientation()
+            center=App.Vector(*config['center'])
+            position=center+camera.multVec(App.Vector(0,0,config['radius']*5))
+            view.setCameraType('Orthographic')
+            axis=camera.Axis;angle=camera.Angle
+            view.setCamera('#Inventor V2.1 ascii\nOrthographicCamera { position %g %g %g orientation %g %g %g %g height %g nearDistance 0.1 farDistance %g }' %
+                (position.x,position.y,position.z,axis.x,axis.y,axis.z,angle,config['radius']*2.2,config['radius']*20))
+            Gui.updateGui()
+            view.saveImage('/output/'+filename,910,910,'White')
+        App.closeDocument(doc.Name)
+    status['status']='passed'
+except Exception as error:
+    status.update(status='failed',error=str(error))
+finally:
+    for name in list(App.listDocuments()): App.closeDocument(name)
+    json.dump(status,open('/output/gui-render-status.json','w'),indent=2)
+    QtCore.QTimer.singleShot(0,QtWidgets.QApplication.instance().quit)

@@ -1,0 +1,4 @@
+import sys
+sys.path.insert(0, '/opt/cad-bench-tools/freecad-mcp/addon/FreeCADMCP')
+from rpc_server import rpc_server
+rpc_server.start_rpc_server()

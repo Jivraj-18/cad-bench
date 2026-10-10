@@ -1,0 +1,13 @@
+.venv/
+.cache/
+.env
+data/
+jobs/
+runs/
+reports/
+__pycache__/
+*.pyc
+.sites-runtime/
+dist/
+.playwright-mcp/
+.wrangler/

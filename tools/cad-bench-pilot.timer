@@ -1,0 +1,11 @@
+[Unit]
+Description=Automatically resume pending CAD trials when model quotas return
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Unit=cad-bench-self-loop.service
+
+[Install]
+WantedBy=timers.target

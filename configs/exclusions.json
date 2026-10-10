@@ -1,0 +1,17 @@
+{
+  "cells": [
+    "claude-code-fable",
+    "codex-astra"
+  ],
+  "reason": "User excluded Fable after native Fable 5 and 5.1 access probes both returned credits_required on the current Pro subscription.",
+  "date": "2026-10-08",
+  "changes": "No Fable CAD trial was launched. Existing plans/access evidence are retained.",
+  "active_setups": [
+    "claude-code-opus--freecad-mcp",
+    "codex-sol-6-1--freecad-mcp"
+  ],
+  "scope_changed_at": "2026-10-10",
+  "scope_reason": "MCP-only on all three drawings. GPT-6.1 Sol replaces Astra for cost; run Sol first. Keep all historical Astra results.",
+  "background_scheduler": "removed at user request on 2026-10-10",
+  "active_experiment": "mcp-3-sol-v1"
+}
