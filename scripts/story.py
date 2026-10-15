@@ -390,7 +390,7 @@ def generate(experiment):
         if not note.exists():
             note.write_text('<!-- Add evidence-backed observations here. Regeneration preserves your edits. -->\n')
         from markdown_it import MarkdownIt
-        editable=MarkdownIt('commonmark',{'html':False}).render(note.read_text())
+        editable=MarkdownIt('commonmark',{'html':False}).render(note.read_text()).replace('<h1>','<h2>').replace('</h1>','</h2>')
         body=f'<a href="index.html">← All examples</a><p class="eyebrow">Drawing → reconstruction → independent verification</p><h1>{esc(EXAMPLES.get(task,task))}</h1><p class="badge">{esc(task)}</p>'
         body+='<p class="muted">Reported token cost is the harness’s API-equivalent estimate, not a subscription charge. Missing cost remains unknown. Elapsed time includes environment setup, generation, and grading; in-progress values are live.</p>'
         shared=horizontal_comparison(rows,report,task)
@@ -435,7 +435,7 @@ def generate(experiment):
         instruction=(ROOT/entry['path']/'instruction.md').read_text()
         body+='<details><summary>Exact Harbor task instruction</summary><pre>'+esc(instruction)+'</pre></details>'
         body+='<details><summary>Method and reproducibility</summary><p>FreeCAD 1.1.0; Harbor 0.23.0; separate hidden verifier; one attempt per model/drawing; no automatic retries. This pass uses FreeCAD MCP on all three drawings. A perfect official reward is 1.0; matching dimensions alone does not establish geometric fidelity.</p><pre>'+esc(entry['package_digest'])+'</pre></details>'
-        (report/f'{task}.html').write_text(page(task,body))
+        (report/f'{task}.html').write_text(page(EXAMPLES.get(task,task),body))
         links.append(f'<li><a href="{task}.html">{task}</a></li>')
     rows=results['rows'];completed=[r for r in rows if r.get('reward') is not None]
     body='<p class="eyebrow">CAD Bench V3 · image-only pilot</p><h1>Read the drawing. Build the part. Check the geometry.</h1>'
