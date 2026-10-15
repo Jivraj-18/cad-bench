@@ -6,8 +6,10 @@ The important mistake was in reading the inset lines around the fork opening. Th
 
 That interpretation leaves extra material at the rear opening. The candidate volume is **179,209.427 mm³**, compared with **177,334.540 mm³** for the reference. The incorrect rear notch accounts for about **1,867.5 mm³** of the **1,874.9 mm³** excess. This is a geometry error even though the script contains the drawing’s labeled numbers.
 
-The specification checker accepted **30 of 30 checks**, but geometry scored **0.310054**, producing an overall score of **0.473345**. The official surface-matching diagnostic reports **3.0414 mm RMSE**. Passing the named-dimension checks did not establish that the part matched the reference.
+The specification checker accepted **30 of 30 checks**, but geometry scored **0.310054**, producing an overall score of **0.473345**. The official face-center alignment diagnostic reports **3.0414 mm RMSE**. Passing the named-dimension checks did not establish that the part matched the reference.
 
 [Reference opening measurements](evidence/freecad-f32bdb2966/codex-sol-6-1--freecad-mcp/reference-opening-inspection.json) support this diagnosis. The CAD comparison below shows the result; the diagnostic details preserve the official scoring evidence.
 
 Opus reconstructed the same bracket with an overall score of **0.999873** and geometry score of **0.999746**. All **30 specification checks** passed, and the official face-center ICP RMSE was **0.000210 mm**. It is the closest reconstruction in this pilot, while Sol’s extra step at the rear opening remains a geometric mismatch.
+
+**What this means for an engineering drawing:** a visually convincing draft can still contain a functional opening error. Here all named specification checks passed even though Codex left an extra step at the rear opening. Inspect the material-difference view from the back before accepting the part; passing the checker alone is insufficient.

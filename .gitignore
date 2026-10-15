@@ -11,3 +11,6 @@ __pycache__/
 dist/
 .playwright-mcp/
 .wrangler/
+# Publish only the generated viewing bundle, not the private source dataset.
+!docs/data/
+!docs/data/**

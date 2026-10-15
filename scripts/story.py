@@ -16,7 +16,74 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def load(path): return json.loads(Path(path).read_text())
 def esc(text): return html.escape(str(text))
-def score(value): return '—' if value is None else f'{float(value):.6f}'
+def score(value):
+    if value is None: return '—'
+    value=float(value)
+    if .9995 <= value < 1: return '>99.9%'
+    if 0 < value < .0005: return '<0.1%'
+    return f'{value*100:.1f}%'
+
+
+
+EXAMPLES = {
+    'freecad-f32bdb2966': 'Forked mounting bracket',
+    'freecad-6b54209a13': 'Stepped enclosure',
+    'freecad-f4e56c467a': 'Double-clevis mount',
+}
+MODELS = [('claude-code-opus', 'Claude Opus 5.5', 'claude'),
+          ('codex-sol-6-1', 'GPT-6.1 Sol · Codex', 'codex')]
+
+
+def quality(value, text=None):
+    if value is None: return '<td>Unknown</td>'
+    return f'<td data-quality="{max(0,min(1,value)):.9f}">{esc(score(value) if text is None else text)}</td>'
+
+
+def score_breakdown(rows, report, task):
+    body = '<section class="card"><h2>Why the score can disagree with your eyes</h2>'
+    body += '<p><strong>The official score is a heuristic, not the percentage of the part that is correct.</strong> Exact material overlap measures shared solid volume; the official grader also measures surface types, mass distribution, and the positions of face centers. A different feature tree can split the same surface into different faces and lower its face-center score.</p>'
+    body += '<div class="scroll"><table><thead><tr><th>Signal</th><th>Claude</th><th>Codex</th></tr></thead><tbody>'
+    items=[]
+    for prefix, label, slug in MODELS:
+        row=next((r for r in rows if r['cell'].startswith(prefix)),None)
+        if not row: return ''
+        path=report/'assets'/task/row['cell']/'comparison.json'
+        if not path.exists(): return ''
+        items.append((row,load(path)))
+    for label, values in [
+        ('Official overall score', [r['reward'] for r,d in items]),
+        ('Shared material / union (IoU)', [d['overlap']['volume_iou'] for r,d in items]),
+        ('Geometry component (G)', [r['geometry'] for r,d in items]),
+        ('Specification component (S)', [r['spec'] for r,d in items]),
+    ]:
+        body+='<tr><th>'+label+'</th>'+''.join(quality(v) for v in values)+'</tr>'
+    body+='</tbody></table></div><p class="muted">Colors use the same 0–100% scale within these score rows. IoU is an additional diagnostic, not a replacement official score or an engineering tolerance test.</p>'
+    body+='<details><summary>How the official score is calculated</summary><p><strong>Overall = 2 × G × S / (G + S)</strong>, the harmonic mean; zero if either component is zero.</p><p>After structural and bounding-box gates pass, the geometry score is:</p><pre>P = 0.10 × surface-type score + 0.35 × volume score\n  + 0.35 × surface-area score + 0.20 × principal-moment score\nG = P × (0.50 + 0.50 × face-center ICP score)</pre><p>These component scores use the grader’s tolerances; they are not raw relative differences. All six files passed the gates. For these specifications, each inconsistent or not-found check subtracts 0.1 from S (floored at zero). For example, 22/24 consistent with two not-found checks gives S = 0.8, not 22/24.</p>'
+    body+='<div class="scroll"><table><tr><th>Calculation</th><th>Claude</th><th>Codex</th></tr>'
+    for label,key in [('Surface-type subscore','surface_types'),('Volume subscore','volume'),('Surface-area subscore','surface_area'),('Principal-moment subscore','principal_moments'),('Face-center ICP subscore','icp')]:
+        body+='<tr><th>'+label+'</th>'+''.join(quality(d['official_recomputed']['geometry_details']['subscores'][key]) for r,d in items)+'</tr>'
+    for label,extract in [
+        ('Property fidelity P',lambda r,d: sum(w*d['official_recomputed']['geometry_details']['subscores'][k] for k,w in [('surface_types',.1),('volume',.35),('surface_area',.35),('principal_moments',.2)])),
+        ('Spatial multiplier',lambda r,d:.5+.5*d['official_recomputed']['geometry_details']['subscores']['icp']),
+    ]:
+        body+='<tr><th>'+label+'</th>'+''.join(quality(extract(r,d)) for r,d in items)+'</tr>'
+    body+='</table></div><p>With perfect property fidelity but near-zero face-center agreement, G is about 0.5. With S = 1, that produces an overall score near 66.7%, even when material overlap is very high. This explains much of the third drawing’s apparent score gap; it does not prove every residual is a face-partition artifact.</p><p class="muted">Verified against freecad-validator 0.6.0 in the pinned scoring image: validator.py (_combine), scorers/geometry_v2.py, and the saved per-run diagnostics linked below.</p></details></section>'
+    return body
+
+
+def matrix(by_task):
+    body='<div class="scroll"><table class="score-matrix"><thead><tr><th scope="col">Drawing</th>'
+    body+=''.join(f'<th scope="col">{esc(label)}<small>High effort · FreeCAD MCP</small></th>' for prefix,label,slug in MODELS)
+    body+='</tr></thead><tbody>'
+    for task,rows in by_task.items():
+        body+=f'<tr><th scope="row"><a href="{task}.html"><img class="matrix-thumb" src="assets/{task}/drawing.png" alt="">{esc(EXAMPLES.get(task,task))}</a><small>{esc(task)}</small></th>'
+        for prefix,label,slug in MODELS:
+            row=next((r for r in rows if r['cell'].startswith(prefix)),{'status':'not_run'})
+            reward=row.get('reward');cost='Unknown cost' if row.get('cost_usd') is None else f"${row['cost_usd']:.2f}"
+            attr='' if reward is None else f' data-quality="{reward:.9f}"'
+            body+=f'<td{attr}><a class="score-link" href="{task}.html?model={slug}#comparison" aria-label="Inspect {esc(label)} on {esc(EXAMPLES.get(task,task))}, overall {score(reward)}"><strong>{score(reward)}</strong><small>{cost} · {esc(elapsed(row))}</small><span>Inspect comparison →</span></a></td>'
+        body+='</tr>'
+    return body+'</tbody></table></div><p class="color-legend"><span class="color-ramp"></span> 0% → 100% official score · red → green. Scores are not material-overlap percentages.</p>'
 
 
 def elapsed(row):
@@ -136,11 +203,12 @@ def page(title,body):
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)}</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%231b3155'/%3E%3Cpath d='M12 44V20h40v24H12m10-8h20V28H22z' stroke='white' fill='none' stroke-width='4'/%3E%3C/svg%3E">
 <script type="importmap">{{"imports":{{"three":"./lib/three.module.js"}}}}</script>
+<script src="./lib/d3.min.js"></script>
 <script type="module" src="./viewer.js?v={viewer_version}"></script>
 <style>
 :root{{--paper:#f5f2ea;--ink:#172033;--blue:#255da5;--muted:#697487}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font:18px/1.65 system-ui,sans-serif}}
-main{{max-width:1100px;margin:auto;padding:50px 24px}}h1,h2{{font-family:Georgia,serif;line-height:1.12}}h1{{font-size:clamp(2rem,5vw,4rem);max-width:950px}}h2{{font-size:2rem;margin-top:2.5rem}}
+main{{max-width:1320px;margin:auto;padding:50px 24px}}h1,h2{{font-family:Georgia,serif;line-height:1.12}}h1{{font-size:clamp(2rem,5vw,4rem);max-width:950px}}h2{{font-size:2rem;margin-top:2.5rem}}
 a{{color:var(--blue)}}.eyebrow,.muted{{color:var(--muted)}}.eyebrow{{text-transform:uppercase;letter-spacing:.12em;font-size:13px}}
 .drawing{{width:100%;max-height:720px;object-fit:contain;background:white;border:1px solid #ccc}}
 .card{{padding:24px;background:white;border:1px solid #d5d0c5;margin:20px 0;border-radius:8px}}
@@ -162,6 +230,7 @@ table{{width:100%;border-collapse:collapse;font-size:15px}}td,th{{padding:12px 8
 .pane-stats{{font-size:13px;line-height:1.45;min-height:3.5em;margin:8px 0}}
 .wipe{{position:relative;aspect-ratio:1;background:white;max-width:700px;margin:20px auto}}.wipe img{{position:absolute;inset:0;width:100%}}.wipe .candidate{{clip-path:inset(0 calc(100% - var(--cut,50%)) 0 0)}}
 input[type=range]{{width:100%;accent-color:var(--blue)}}details{{margin:16px 0}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#ebe6da;padding:16px;font:13px/1.6 monospace}}.badge{{font:14px monospace}}
+[data-quality]{{color:#14251d}}.score-matrix{{table-layout:fixed;font-size:16px}}.score-matrix th:first-child{{width:32%}}.score-matrix td{{padding:0;border:5px solid var(--paper)}}.score-matrix small{{display:block;font-weight:400;font-size:13px;line-height:1.5}}.score-link{{display:block;padding:24px;color:inherit;text-decoration:none}}.score-link strong{{display:block;font:700 clamp(30px,5vw,52px)/1.3 system-ui}}.score-link span{{font-size:13px;text-decoration:underline}}.score-link:hover,.score-link:focus-visible{{outline:3px solid var(--blue);outline-offset:-3px}}.matrix-thumb{{width:92px;height:65px;object-fit:contain;display:block;background:white;margin-bottom:8px}}.color-legend{{font-size:14px}}.color-ramp{{display:inline-block;width:120px;height:12px;background:linear-gradient(to right,#d73027,#ffffbf,#1a9850)}}.metric-delta{{display:block;font-size:12px}}.viewer-pane.selected-model{{outline:2px solid var(--blue);outline-offset:4px}}.replay-status{{font-size:12px;min-height:2em;margin:4px 0}}.pane-toolbar{{flex-wrap:wrap}}.viewer-toolbar label{{font-size:15px;cursor:pointer}}summary{{cursor:pointer;font-weight:600}}section[id],h2[id]{{scroll-margin-top:20px}}
 @media(max-width:650px){{.pair{{grid-template-columns:1fr}}main{{padding:30px 16px}}}}
 </style></head><body><main>{body}</main></body></html>'''
 
@@ -227,9 +296,9 @@ def horizontal_comparison(rows,report,task):
     models.append(reference)
     asset=report/'assets'/task;asset.mkdir(parents=True,exist_ok=True)
     (asset/'comparison.json').write_text(json.dumps({'models':models},indent=2)+'\n')
-    return f'''<h2>Claude, Codex, and the original CAD</h2>
+    return f'''<h2 id="comparison">Claude, Codex, and the original CAD</h2>
 <div class="cad-viewer horizontal-viewer" data-viewer="assets/{task}/comparison.json">
-<p class="viewer-status" role="status">Loading the three CAD models…</p><div class="viewer-panels"></div>
+<div class="viewer-toolbar"><label><input class="sync-views" type="checkbox"> Sync rotation, zoom and pan</label><span class="muted">Play construction in any panel, or choose a step.</span></div><p class="viewer-status" role="status">Loading the three CAD models…</p><div class="viewer-panels"></div>
 <p class="viewer-caption"></p></div>
 <p class="muted">Drag within a panel to rotate it; scroll or pinch to zoom. Initial alignment is rigid, with no scaling. Reference alignment is for display; official scores come from the independent grader.</p>'''
 
@@ -247,20 +316,26 @@ def deterministic_details(rows,report,task):
     body+='<div class="scroll"><table><tr><th>Measure</th><th>Reference</th><th>Claude</th><th>Codex</th></tr>'
     for label,key in [('Volume (mm³)','volume_mm3'),('Surface area (mm²)','surface_area_mm2'),('Faces','faces'),('Edges','edges'),('Vertices','vertices')]:
         values=[ref['metrics'][key]]+[d['candidate']['metrics'][key] for _,r,d in ordered]
-        body+='<tr><th>'+label+'</th>'+''.join('<td>'+esc(f'{v:,.3f}' if isinstance(v,float) else v)+'</td>' for v in values)+'</tr>'
+        body+='<tr><th>'+label+'</th><td>'+esc(f'{values[0]:,.1f}' if isinstance(values[0],float) else values[0])+'</td>'
+        for v in values[1:]:
+            if key in ('volume_mm3','surface_area_mm2'):
+                delta=(v-values[0])/values[0]
+                body+=quality(1-min(abs(delta)/.05,1),f'{v:,.1f}').replace('</td>',f'<span class="metric-delta">{delta:+.3%} vs reference</span></td>')
+            else: body+='<td>'+esc(v)+'</td>'
+        body+='</tr>'
     official=[d['official_recomputed']['geometry_details'] for label,r,d in ordered]
     box=official[0]['geom_details']['bbox_reference']
-    body+='<tr><th>Oriented box extents (mm)</th><td>'+esc(' × '.join(f'{v:.3f}' for v in box))+'</td>'
-    for detail in official:body+='<td>'+esc(' × '.join(f'{v:.3f}' for v in detail['geom_details']['bbox_candidate']))+'</td>'
+    body+='<tr><th>Oriented box extents (mm)</th><td>'+esc(' × '.join(f'{v:.2f}' for v in box))+'</td>'
+    for detail in official:body+='<td>'+esc(' × '.join(f'{v:.2f}' for v in detail['geom_details']['bbox_candidate']))+'</td>'
     body+='</tr>'
     for label,key in [('Oriented-box difference (%)','bbox_rel_diff'),('Volume difference (%)','volume_rel_diff'),('Surface-type difference (%)','surface_types_rel_diff'),('Principal-moment difference (%)','principal_moments_rel_diff')]:
-        body+='<tr><th>'+label+'</th><td>0</td>'+''.join('<td>'+f'{detail["geom_details"][key]*100:.5f}'+'</td>' for detail in official)+'</tr>'
-    body+='<tr><th>Face-center ICP RMSE (mm)</th><td>0</td>'+''.join('<td>'+f'{detail["icp_details"]["rmse"]:.6f}'+'</td>' for detail in official)+'</tr>'
+        body+='<tr><th>'+label+'</th><td>0</td>'+''.join(quality(1-min(detail['geom_details'][key]/.05,1),f'{detail["geom_details"][key]*100:.3f}%') for detail in official)+'</tr>'
+    body+='<tr><th>Face-center ICP RMSE (mm)</th><td>0</td>'+''.join('<td>'+f'{detail["icp_details"]["rmse"]:.3f}'+'</td>' for detail in official)+'</tr>'
     for label,key,reference in [('Volume overlap (IoU)','volume_iou','100%'),('Missing material (mm³)','missing_material_mm3','0'),('Extra material (mm³)','extra_material_mm3','0')]:
         values=[d['overlap'][key] for _,r,d in ordered]
-        body+='<tr><th>'+label+'</th><td>'+reference+'</td>'+''.join('<td>'+esc(f'{v*100:.5f}%' if key=='volume_iou' else f'{v:,.3f}')+'</td>' for v in values)+'</tr>'
-    body+='</table></div><p class="muted">Overlap chooses the best exact solid intersection among a finite set of proper right-angle rotations, with bounding-box-center translation. It applies no scaling or reflection. It is suitable for these axis-oriented files; it is not a general optimal registration solver. The grader’s face-center ICP depends on face partitioning and is not a surface-distance measurement.</p>'
-    body+='<h2>How each CAD file was constructed</h2><p>These are the operations saved in the document’s feature tree. They describe construction, not the chronological editing process; actual saved revisions remain available separately.</p><div class="viewer-panels">'
+        body+='<tr><th>'+label+'</th><td>'+reference+'</td>'+''.join(quality(v if key=='volume_iou' else 1-min(v/ref['metrics']['volume_mm3']/.05,1),f'{v*100:.3f}%' if key=='volume_iou' else f'{v:,.1f}') for v in values)+'</tr>'
+    body+='</table></div><p class="muted">For physical differences, green means 0% error and red means 5% error or more; missing/extra material uses reference volume as its denominator. IoU uses the full 0–100% scale. Face, edge and vertex counts stay uncolored: segmentation is not a physical accuracy measure. Face-center RMSE is a separate, topology-dependent measurement.</p><p class="muted">Overlap chooses the best exact solid intersection among a finite set of proper right-angle rotations, with bounding-box-center translation. It applies no scaling or reflection. It is suitable for these axis-oriented files; it is not a general optimal registration solver. The grader’s face-center ICP depends on face partitioning and is not a surface-distance measurement.</p>'
+    body+='<details><summary>Inspect the saved construction trees</summary><p>These are the operations saved in the document’s feature tree. They describe construction, not the chronological editing process; actual saved revisions remain available separately.</p><div class="viewer-panels">'
     for label,data in [('Reference',ref)]+[(label,d['candidate']) for label,r,d in ordered]:
         body+=f'<div class="viewer-pane"><h3>{label}</h3><p>{data["operation_count"]} operations · {data["sketch_count"]} sketches</p><ol>'
         for operation in data['history']:
@@ -271,7 +346,7 @@ def deterministic_details(rows,report,task):
             if profile.get('radii_mm'):body+='<br>Profile radii: '+esc(', '.join(str(v) for v in profile['radii_mm']))+' mm'
             body+='</li>'
         body+='</ol></div>'
-    body+='</div><h2>Which dimension checks failed?</h2>'
+    body+='</div></details><h2>Which dimension checks failed?</h2>'
     for label,row,data in ordered:
         findings=data['official_recomputed']['dimension_findings']
         body+=f'<h3>{label}</h3>'
@@ -291,7 +366,7 @@ def table(rows):
     result='<div class="scroll"><table><thead><tr><th>Model / setup</th><th>Effort</th><th>Status</th><th>Geometry</th><th>Spec</th><th>Overall</th><th>Reported cost</th><th>Elapsed time</th></tr></thead><tbody>'
     for r in rows:
         cost='Unknown' if r.get('cost_usd') is None else '$'+f"{r['cost_usd']:.2f}"
-        result+=f"<tr><td>{esc(r['cell'])}</td><td>{esc(r.get('reasoning_effort','Unknown'))}</td><td class=\"status-{esc(r['status'])}\">{esc(r['status'].replace('_',' '))}</td><td>{score(r.get('geometry'))}</td><td>{score(r.get('spec'))}</td><td>{score(r.get('reward'))}</td><td>{cost}</td><td>{esc(elapsed(r))}</td></tr>"
+        result+=f"<tr><td>{esc(r['cell'])}</td><td>{esc(r.get('reasoning_effort','Unknown'))}</td><td class=\"status-{esc(r['status'])}\">{esc(r['status'].replace('_',' '))}</td>{quality(r.get('geometry'))}{quality(r.get('spec'))}{quality(r.get('reward'))}<td>{cost}</td><td>{esc(elapsed(r))}</td></tr>"
     return result+'</tbody></table></div>'
 
 
@@ -316,11 +391,13 @@ def generate(experiment):
             note.write_text('<!-- Add evidence-backed observations here. Regeneration preserves your edits. -->\n')
         from markdown_it import MarkdownIt
         editable=MarkdownIt('commonmark',{'html':False}).render(note.read_text())
-        body=f'<a href="index.html">← All examples</a><p class="eyebrow">Drawing → reconstruction → independent verification</p><h1>Can an agent reconstruct this engineered part?</h1><p class="badge">{esc(task)}</p>'
+        body=f'<a href="index.html">← All examples</a><p class="eyebrow">Drawing → reconstruction → independent verification</p><h1>{esc(EXAMPLES.get(task,task))}</h1><p class="badge">{esc(task)}</p>'
         body+='<p class="muted">Reported token cost is the harness’s API-equivalent estimate, not a subscription charge. Missing cost remains unknown. Elapsed time includes environment setup, generation, and grading; in-progress values are live.</p>'
         shared=horizontal_comparison(rows,report,task)
         body+=f'<img class="drawing" src="assets/{task}/drawing.png" alt="Original dimensioned engineering drawing">'+shared+'<h2>The results</h2>'+table(rows)
         body+=f'<p><a href="assets/{task}/reference.FCStd">Download the dataset’s ground-truth CAD</a></p>'
+        body+=score_breakdown(rows,report,task)
+        if editable.strip(): body+='<div class="card">'+editable+'</div>'
         body+=deterministic_details(rows,report,task)
         complete=[r for r in rows if r.get('reward') is not None]
         perfect=[r['cell'] for r in complete if r['status']=='perfect']
@@ -330,9 +407,8 @@ def generate(experiment):
             body+='<p>No run scored exactly 1.0.</p>'
         else:
             body+='<p>No model verdict yet. These are planned trials, not benchmark results.</p>'
-        if editable.strip(): body+='<div class="card">'+editable+'</div>'
         for row in rows:
-            body+=f"<section><h2>{esc(row['cell'])}</h2>"
+            body+=f"<details><summary>Run evidence: {esc(row['cell'])}</summary>"
             body+=process_evidence(row,report,task)
             if row.get('candidate'):
                 if not shared:body+=comparison(row,report,task)
@@ -355,7 +431,7 @@ def generate(experiment):
                 body+='<p class="muted">The Harbor driver disappeared after generation. The frozen submission was recovered and scored using the unchanged official grader in the pinned runtime. Generation was not rerun; driver return code and complete timing/cost accounting are unavailable.</p>'
             if row.get('trial_dir'):
                 body+='<p class="muted">Local audit trail: '+esc(row['trial_dir'])+'. Native logs stay local; inspect them with Harbor.</p>'
-            body+='</section>'
+            body+='</details>'
         instruction=(ROOT/entry['path']/'instruction.md').read_text()
         body+='<details><summary>Exact Harbor task instruction</summary><pre>'+esc(instruction)+'</pre></details>'
         body+='<details><summary>Method and reproducibility</summary><p>FreeCAD 1.1.0; Harbor 0.23.0; separate hidden verifier; one attempt per model/drawing; no automatic retries. This pass uses FreeCAD MCP on all three drawings. A perfect official reward is 1.0; matching dimensions alone does not establish geometric fidelity.</p><pre>'+esc(entry['package_digest'])+'</pre></details>'
@@ -363,9 +439,10 @@ def generate(experiment):
         links.append(f'<li><a href="{task}.html">{task}</a></li>')
     rows=results['rows'];completed=[r for r in rows if r.get('reward') is not None]
     body='<p class="eyebrow">CAD Bench V3 · image-only pilot</p><h1>Read the drawing. Build the part. Check the geometry.</h1>'
-    body+=f'<p>{len(by_task)} examples · {len(completed)} completed / {len(rows)} planned trials. This pilot cannot establish a dataset-wide winner.</p><ul>'+''.join(links)+'</ul>'
-    body+='<h2>Evidence before a verdict.</h2>'+table(rows)
-    body+='<p>Reported costs are API-equivalent token estimates; subscription billing is not measured. Scores are from the unchanged official grader.</p>'
+    body+=f'<p>{len(by_task)} drawings · {len(completed)} completed runs · one attempt per model and drawing. Select a score to inspect the model beside the reference.</p>'
+    body+=matrix(by_task)
+    body+='<section class="card"><h2>Useful reconstructions. Still needs an engineering check.</h2><p>Both models produced editable CAD that looks close on these three drawings. The bracket and enclosure expose consequential mistakes in Codex’s openings and cuts. On the double-clevis mount, both solids overlap the reference by more than 99.8%, despite official scores of 66–71%: face-center scoring penalizes their different surface decompositions as well as geometric residuals.</p><p><strong>Use this as a draft for inspection.</strong> These runs do not establish manufacturing readiness, fit, tolerance compliance, load capacity, or safe performance. A high visual overlap or a passed dimension check does not verify those properties. The stories show the evidence needed to review each draft.</p><p class="muted">Three drawings and one attempt per model cannot establish a dataset-wide winner or whether MCP helped. There is no baseline arm in this pilot.</p></section>'
+    body+='<details><summary>Read the scoring method and cost accounting</summary><p>The unchanged official score is the harmonic mean of geometry G and specification S: 2 × G × S / (G + S). Geometry includes scalar properties and a topology-dependent face-center alignment factor; scores are not percentages of correct material. Each comparison page expands the calculation using its recorded subscores.</p><p>Reported costs are API-equivalent token estimates; subscription charges are not measured. Elapsed time includes environment setup, generation, and grading. All runs used high effort and FreeCAD MCP; the agents were not given reference geometry or grader feedback.</p></details>'
     body+='<p><a href="results.csv">Download results CSV</a> · <a href="results.json">Download structured results</a></p>'
     body+='<p>Stories are generated from frozen results and editable Markdown in <code>stories/'+esc(experiment)+'</code>. Rebuilding preserves your edits. Raw native trajectories and logs remain in <code>jobs/</code>.</p>'
     (report/'index.html').write_text(page('Image-to-CAD benchmark pilot',body))

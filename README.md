@@ -4,7 +4,7 @@
 
 **Repository:** https://github.com/Jivraj-18/cad-bench
 
-The current six-trial pilot is complete: Claude Opus 5.5 / Claude Code and GPT-6.1 Sol / Codex, both with FreeCAD MCP, each reconstructing the same three drawings. Every story has three horizontal 3D panels: Claude, Codex, and the dataset reference. Each panel rotates, zooms, and resets independently; they start at a common display scale and orientation. Saved CAD revisions and feature-tree stages can be inspected in the browser. Cost and wall time are shown above each output. Reported cost is an API-equivalent token estimate, not actual subscription billing.
+The current six-trial pilot is complete: Claude Opus 5.5 / Claude Code and GPT-6.1 Sol / Codex, both with FreeCAD MCP, each reconstructing the same three drawings. Every story has three horizontal 3D panels: Claude, Codex, and the dataset reference. Each panel rotates, zooms, and resets independently by default; an optional checkbox synchronizes rotation, zoom and pan. They start at a common display scale and orientation. Each panel has construction playback, pause/resume, and direct step selection. Replay follows the saved feature tree, not a recording of the agent’s editing chronology. Saved CAD revisions and feature-tree stages can be inspected in the browser. Cost and wall time are shown above each output. Reported cost is an API-equivalent token estimate, not actual subscription billing.
 
 | Drawing | Opus score | Sol score |
 | --- | ---: | ---: |
@@ -14,9 +14,19 @@ The current six-trial pilot is complete: Claude Opus 5.5 / Claude Code and GPT-6
 
 These three drawings do not establish a dataset-wide winner. There are no baseline arms in the active scope, so the results do not establish that MCP improved either model. Native CAD submissions and scores have not been manually corrected.
 
+## Reading the comparison
+
+The overview is a three-row, two-model score matrix. Scores use a fixed continuous D3 red/yellow/green scale; cost and elapsed time are secondary. Clicking a cell opens its drawing and highlights the selected model beside the other output and dataset reference. Near-perfect values are shown as `>99.9%`, rather than rounding an imperfect run to 100%.
+
+Each comparison separates official scores from solid-volume IoU. The official score is `2*G*S/(G+S)` (zero if either component is zero). In the pinned validator 0.6.0, after all gates pass, `P = .10*surface_types + .35*volume + .35*surface_area + .20*principal_moments` and `G = P*(.50 + .50*face_center_ICP)`, using tolerance-mapped subscores. The story expands these subscores for each run. These six cases use a spec failure budget of 10: each inconsistent or not-found check subtracts 0.1 from S. This is not simply the fraction of checks passed.
+
+The third drawing has material IoU above 99.8% for both outputs despite 66–71% official scores. The grader’s face-center measurement depends on surface partitioning, as well as geometry; neither face count nor ICP RMSE is a direct measure of physical surface error. Exact Boolean missing/extra material provides a separate physical diagnostic under the documented finite right-angle pose search. It does not establish local tolerance compliance or manufacturing readiness. No CAD has been corrected and no benchmark agents were rerun for this presentation update.
+
+Physical metric cells show differences from the reference and use a declared error scale (green at 0%, red at 5% or above). Faces, edges and vertices remain neutral. Supporting feature lists and raw run evidence are expandable to keep the main comparison readable.
+
 ## Browser publication
 
-GitHub Pages serves `docs/`. R2 serves the drawings, exported geometry, unchanged final CAD/Python files, actual sampled CAD revisions, and selected process/scoring evidence under `~/r2/cad-bench/`. Raw native logs and trajectories remain in local `jobs/` and are excluded from public upload. `configs/publication.json` records the public data prefix; each upload bundle includes a size/hash manifest. Three.js 0.186.1 and its MIT license are vendored in `web/lib/`.
+GitHub Pages serves `docs/`, including a same-origin copy of viewing geometry, diagnostics, and images in `docs/data/assets/`. Interactive viewing therefore works when a network blocks R2. R2 remains the canonical download location for unchanged final CAD/Python files, actual sampled CAD revisions, and selected process/scoring evidence under `~/r2/cad-bench/`; those downloads can still be blocked by such networks. Raw native logs and trajectories remain in local `jobs/` and are excluded from public upload. `configs/publication.json` records the public data prefix; each upload bundle includes a size/hash manifest. Three.js 0.186.1 and D3 7.9.0, with their licenses, are vendored in `web/lib/`.
 
 ```sh
 .venv/bin/python scripts/bench.py collect --experiment mcp-3-sol-v1 --enhancement freecad-mcp

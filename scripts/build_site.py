@@ -32,7 +32,10 @@ def build(experiment,base):
         relative=source.relative_to(report)
         if relative.parts[0]=='lib' or source.name=='viewer.js': continue
         if source.suffix=='.html':
-            (pages/source.name).write_text(rewrite(source.read_text(),base));continue
+            text=rewrite(source.read_text(),base)
+            # Viewing needs no R2 access. Keep original CAD/evidence downloads on R2.
+            text=re.sub(r'((?:src|data-viewer)=")'+re.escape(base)+r'/assets/',r'\1data/assets/',text)
+            (pages/source.name).write_text(text);continue
         # Full native trajectories contain system context and image payloads;
         # they stay in local jobs/, separate from this public evidence bundle.
         if source.name=='trajectory.json': continue
@@ -54,6 +57,12 @@ def build(experiment,base):
                     for revision in model.get('revisions',[]):revision['url']=base+'/'+revision['url']
             target.write_text(json.dumps(document,separators=(',',':'))+'\n')
         else: shutil.copyfile(source,target)
+        if relative.parts[0]=='assets' and source.suffix in ('.json','.png'):
+            local=pages/'data'/relative;local.parent.mkdir(parents=True,exist_ok=True)
+            if source.suffix=='.json':
+                # JSON URLs resolve against the HTML page, like the R2 version.
+                local.write_text(target.read_text().replace(base+'/', 'data/'))
+            else:shutil.copyfile(source,local)
         files.append({'path':str(relative),'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
                       'bytes':target.stat().st_size,'url':base+'/'+str(relative)})
     (pages/'.nojekyll').touch()

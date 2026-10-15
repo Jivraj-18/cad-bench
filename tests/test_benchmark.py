@@ -23,6 +23,19 @@ story=module('story',ROOT/'scripts/story.py')
 
 
 class Contracts(unittest.TestCase):
+    def test_scores_do_not_round_imperfect_runs_to_perfect(self):
+        self.assertEqual(story.score(.999873),'>99.9%')
+        self.assertEqual(story.score(1),'100.0%')
+        self.assertEqual(story.score(0),'0.0%')
+        self.assertEqual(story.score(None),'—')
+
+    def test_matrix_keeps_unknown_score_and_cost_unknown(self):
+        markup=story.matrix({'example':[{'cell':'claude-code-opus--freecad-mcp','status':'not_run'}]})
+        self.assertIn('Unknown cost',markup)
+        self.assertNotIn('data-quality="0',markup)
+        self.assertIn('?model=claude#comparison',markup)
+        self.assertIn('?model=codex#comparison',markup)
+
     def test_story_time_accepts_harbor_naive_and_utc_timestamps(self):
         for start in ('2026-10-10T10:00:00','2026-10-10T10:00:00Z'):
             row={'status':'partial','started_at':start,'finished_at':'2026-10-10T10:02:15Z'}

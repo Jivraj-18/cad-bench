@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import {OrbitControls} from './lib/OrbitControls.js';
 
+// One fixed D3 scale across official scores; error cells declare their own scale.
+for (const cell of document.querySelectorAll('[data-quality]')) {
+  const q=Math.max(0,Math.min(1,Number(cell.dataset.quality)));
+  cell.style.backgroundColor=d3.interpolateRdYlGn(.12+.76*q);
+}
+
 const json = async url => {
   const response = await fetch(url,{cache:'no-cache'});
   if (!response.ok) throw new Error(`Could not load CAD data (${response.status})`);
@@ -60,6 +66,14 @@ function differences(data,reference){
   return result;
 }
 
+function disposeScene(value){
+  value.traverse(object=>{
+    object.geometry?.dispose();
+    if(Array.isArray(object.material))object.material.forEach(m=>m.dispose());
+    else object.material?.dispose();
+  });
+}
+
 async function horizontal(host,config) {
   const models=await Promise.all(config.models.map(async item=>{
     const diagnostic=item.comparison?await json(item.comparison):null;
@@ -73,8 +87,33 @@ async function horizontal(host,config) {
   const center=box.getCenter(new THREE.Vector3()), size=box.getSize(new THREE.Vector3());
   const radius=Math.max(size.x,size.y,size.z)*.65;
   const panels=host.querySelector('.viewer-panels');
+  const sync=host.querySelector('.sync-views');
+  const peers=[];let copying=false,lastActive=null;
+  function synchronize(source){
+    if(copying||!sync.checked)return;
+    copying=true;
+    for(const peer of peers){
+      if(peer===source)continue;
+      peer.camera.position.copy(source.camera.position);
+      peer.camera.up.copy(source.camera.up);
+      peer.camera.zoom=source.camera.zoom;
+      peer.controls.target.copy(source.controls.target);
+      peer.controls.update();peer.draw();
+    }
+    copying=false;
+  }
+  sync.addEventListener('change',()=>{
+    if(sync.checked)synchronize(lastActive||peers[0]);
+    host.querySelector('.viewer-caption').textContent=sync.checked?
+      'Views linked: rotation, zoom and pan in any panel update all three. Construction playback stays independent.':
+      'Views independent: rotate, zoom, pan and play construction separately in each panel.';
+  });
   for (const [i,item] of models.entries()) {
     const panel=document.createElement('div');panel.className='viewer-pane';
+    panel.dataset.model=item.reference?'reference':item.shortLabel.toLowerCase();
+    if(new URLSearchParams(location.search).get('model')===panel.dataset.model){
+      panel.classList.add('selected-model');
+    }
     const title=document.createElement('h4');title.textContent=item.label;panel.append(title);
     if(item.stats){
       const stats=document.createElement('p');stats.className='pane-stats';
@@ -92,7 +131,13 @@ async function horizontal(host,config) {
     options.forEach((o,n)=>{const node=document.createElement('option');node.value=n;node.textContent=o.name;select.append(node);});
     const reset=document.createElement('button');reset.type='button';reset.textContent='Reset';
     reset.setAttribute('aria-label','Reset '+item.shortLabel+' view');
-    toolbar.append(select,reset);panel.append(toolbar);
+    const play=document.createElement('button');play.type='button';play.textContent='▶ Play';
+    play.setAttribute('aria-label','Play '+item.shortLabel+' construction');
+    const steps=options.map((o,n)=>o.name.startsWith('Feature:')?n:-1).filter(n=>n>=0);
+    play.disabled=!steps.length;
+    const stepStatus=document.createElement('p');stepStatus.className='replay-status';
+    stepStatus.textContent='Feature-tree replay · not a recording of the agent’s edits';
+    toolbar.append(select,play,reset);panel.append(toolbar,stepStatus);
     const canvas=document.createElement('canvas');canvas.setAttribute('aria-label',item.label+' interactive CAD');
     panel.append(canvas);panels.append(panel);
     const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -109,19 +154,49 @@ async function horizontal(host,config) {
       camera.top=radius*Math.max(1,height/width);camera.bottom=-camera.top;
       camera.updateProjectionMatrix();renderer.render(scenes[i],camera);
     }
-    select.addEventListener('change',async()=>{
+    const peer={camera,controls,draw};peers.push(peer);
+    let timer=null,playing=false,loadVersion=0,resumeAt=0;
+    function stop(reset=true){
+      if(reset)resumeAt=0;
+      playing=false;clearTimeout(timer);play.textContent='▶ Play';
+      play.setAttribute('aria-label','Play '+item.shortLabel+' construction');
+    }
+    async function showChoice(){
+      const version=++loadVersion;
       try {
         const choice=options[Number(select.value)];
-        if(choice.difference)scenes[i]=differences(item.diagnostic,groundTruth);
-        else{if(!choice.data)choice.data=await json(choice.url);scenes[i]=scene(choice.data,item.transform);}
+        let next;
+        if(choice.difference)next=differences(item.diagnostic,groundTruth);
+        else{if(!choice.data)choice.data=await json(choice.url);next=scene(choice.data,item.transform);}
+        if(version!==loadVersion){disposeScene(next);return;}
+        disposeScene(scenes[i]);scenes[i]=next;
+        const index=steps.indexOf(Number(select.value));
+        stepStatus.textContent=index>=0?`Step ${index+1} of ${steps.length} · ${choice.name.slice(9)}`:
+          choice.difference?'Red: missing reference material · Gold: extra candidate material':
+          choice.name.startsWith('Saved revision')?'Actual CAD revision saved during the run':
+          'Feature-tree replay · not a recording of the agent’s edits';
         draw();
-      }catch(error){host.querySelector('.viewer-status').textContent=error.message;host.querySelector('.viewer-status').hidden=false;}
+      }catch(error){stop();host.querySelector('.viewer-status').textContent=error.message;host.querySelector('.viewer-status').hidden=false;}
+    }
+    async function advance(n){
+      if(!playing)return;
+      if(n>=steps.length){stop();stepStatus.textContent+=' · Replay complete';return;}
+      select.value=steps[n];await showChoice();
+      resumeAt=n+1;
+      if(playing)timer=setTimeout(()=>advance(n+1),1100);
+    }
+    play.addEventListener('click',()=>{
+      if(playing){stop(false);play.textContent='▶ Resume';play.setAttribute('aria-label','Resume '+item.shortLabel+' construction');return;}
+      playing=true;play.textContent='Ⅱ Pause';
+      play.setAttribute('aria-label','Pause '+item.shortLabel+' construction');advance(resumeAt);
     });
-    controls.addEventListener('change',draw);new ResizeObserver(draw).observe(canvas);
-    reset.addEventListener('click',()=>{controls.reset();draw();});draw();
+    select.addEventListener('change',()=>{stop();showChoice();});
+    controls.addEventListener('change',()=>{draw();if(!copying){lastActive=peer;synchronize(peer);}});
+    new ResizeObserver(draw).observe(canvas);
+    reset.addEventListener('click',()=>{controls.reset();draw();synchronize(peer);});draw();
   }
   host.querySelector('.viewer-status').hidden=true;
-  host.querySelector('.viewer-caption').textContent='Each panel rotates and zooms independently. All start with the same orientation and scale.';
+  host.querySelector('.viewer-caption').textContent='Views independent: rotate, zoom, pan and play construction separately in each panel.';
   host.dataset.ready='true';
 
 }
